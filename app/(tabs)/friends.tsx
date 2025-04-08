@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Image, TouchableOpacity, FlatList, View, SafeAreaView } from 'react-native';
+import { StyleSheet, Image, TouchableOpacity, FlatList, View, SafeAreaView, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -70,6 +70,7 @@ const parseCardName = (cardName: string): { value: string; suit: string; color: 
 export default function FriendsScreen() {
   const [friends, setFriends] = useState(MOCK_FRIENDS);
   const [myDailyCard, setMyDailyCard] = useState('');
+  const [activeTab, setActiveTab] = useState('friends'); // 'friends' or 'calendar'
   const router = useRouter();
   const colorScheme = useColorScheme();
   
@@ -195,41 +196,119 @@ export default function FriendsScreen() {
       
       <View style={styles.tabs}>
         <TouchableOpacity 
-          style={styles.tabActive}
+          style={activeTab === 'friends' ? styles.tabActive : styles.tab}
           accessibilityLabel="Friends tab"
           accessibilityRole="tab"
-          accessibilityState={{ selected: true }}
+          accessibilityState={{ selected: activeTab === 'friends' }}
+          onPress={() => setActiveTab('friends')}
         >
-          <ThemedText style={styles.tabTextActive}>Friends</ThemedText>
+          <ThemedText style={activeTab === 'friends' ? styles.tabTextActive : styles.tabText}>Friends</ThemedText>
         </TouchableOpacity>
         <TouchableOpacity 
-          style={styles.tab}
+          style={activeTab === 'calendar' ? styles.tabActive : styles.tab}
           accessibilityLabel="Calendar tab"
           accessibilityRole="tab"
-          accessibilityState={{ selected: false }}
+          accessibilityState={{ selected: activeTab === 'calendar' }}
+          onPress={() => setActiveTab('calendar')}
         >
-          <ThemedText style={styles.tabText}>Calendar</ThemedText>
+          <ThemedText style={activeTab === 'calendar' ? styles.tabTextActive : styles.tabText}>Calendar</ThemedText>
         </TouchableOpacity>
       </View>
       
-      <FlatList
-        data={friends}
-        renderItem={renderFriendItem}
-        keyExtractor={item => item.id}
-        contentContainerStyle={styles.friendsList}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <ThemedText style={styles.emptyStateText}>You haven't added any friends yet.</ThemedText>
-            <TouchableOpacity 
-              style={styles.emptyStateButton}
-              onPress={handleAddFriend}
-            >
-              <ThemedText style={styles.emptyStateButtonText}>Add Friends</ThemedText>
-            </TouchableOpacity>
+      {activeTab === 'friends' ? (
+        <FlatList
+          data={friends}
+          renderItem={renderFriendItem}
+          keyExtractor={item => item.id}
+          contentContainerStyle={styles.friendsList}
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <ThemedText style={styles.emptyStateText}>You haven't added any friends yet.</ThemedText>
+              <TouchableOpacity 
+                style={styles.emptyStateButton}
+                onPress={handleAddFriend}
+                accessibilityLabel="Add a new friend"
+                accessibilityRole="button"
+              >
+                <ThemedText style={styles.emptyStateButtonText}>Add Friends</ThemedText>
+              </TouchableOpacity>
+            </View>
+          }
+        />
+      ) : (
+        <ScrollView style={styles.calendarContainer}>
+          {/* Month headers */}
+          <View style={styles.calendarHeader}>
+            <View style={styles.dayNumberColumn}>
+              {/* Empty cell for the corner */}
+            </View>
+            {['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'].map((month, index) => (
+              <View key={`month-${index}`} style={styles.monthCell}>
+                <ThemedText style={styles.monthLabel}>{month}</ThemedText>
+              </View>
+            ))}
           </View>
-        }
-      />
+          
+          {/* Calendar grid with days and cards */}
+          {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
+            <View key={`day-${day}`} style={styles.calendarRow}>
+              {/* Day number column */}
+              <View style={styles.dayNumberColumn}>
+                <ThemedText style={styles.dayNumber}>{day}</ThemedText>
+              </View>
+              
+              {/* Month columns with cards */}
+              {Array.from({ length: 12 }, (_, monthIndex) => {
+                // Get days in month (simplified - not accounting for leap years)
+                const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][monthIndex];
+                const hasCard = day <= daysInMonth;
+                
+                // Special cards for demo (showing a few revealed cards)
+                const isSpecialCard = 
+                  (day === 2 && monthIndex === 1) || // February 2 (heart 3)
+                  (day === 6 && monthIndex === 0) || // January 6 (heart A)
+                  (day === 6 && monthIndex === 7);   // August 6 (club 6)
+                
+                return (
+                  <View key={`card-${day}-${monthIndex}`} style={styles.cardCell}>
+                    {hasCard && (
+                      isSpecialCard ? (
+                        <View style={styles.specialCard}>
+                          {day === 2 && monthIndex === 1 && (
+                            <View style={styles.revealedCard}>
+                              <ThemedText style={[styles.cardValue, { color: '#E53935' }]}>3</ThemedText>
+                              <ThemedText style={[styles.cardSymbol, { color: '#E53935' }]}>♥</ThemedText>
+                            </View>
+                          )}
+                          {day === 6 && monthIndex === 0 && (
+                            <View style={styles.revealedCard}>
+                              <ThemedText style={[styles.cardValue, { color: '#E53935' }]}>A</ThemedText>
+                              <ThemedText style={[styles.cardSymbol, { color: '#E53935' }]}>♥</ThemedText>
+                            </View>
+                          )}
+                          {day === 6 && monthIndex === 7 && (
+                            <View style={styles.revealedCard}>
+                              <ThemedText style={[styles.cardValue, { color: '#212121' }]}>6</ThemedText>
+                              <ThemedText style={[styles.cardSymbol, { color: '#212121' }]}>♣</ThemedText>
+                            </View>
+                          )}
+                        </View>
+                      ) : (
+                        <Image 
+                          source={require('@/assets/images/partial-react-logo.png')} 
+                          style={styles.cardBack} 
+                          resizeMode="cover"
+                        />
+                      )
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          ))}
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
@@ -430,6 +509,87 @@ const styles = StyleSheet.create({
   },
   friendsContainer: {
     marginBottom: 20,
+  },
+  // Calendar styles
+  calendarContainer: {
+    flex: 1,
+    backgroundColor: '#FFF5F5', // Light pink background as shown in the image
+  },
+  calendarHeader: {
+    flexDirection: 'row',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  dayNumberColumn: {
+    width: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  monthCell: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  monthLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1a2a3a',
+  },
+  calendarRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.03)',
+  },
+  dayNumber: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#1a2a3a',
+    padding: 4,
+  },
+  cardCell: {
+    flex: 1,
+    aspectRatio: 0.7,
+    padding: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardBack: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 4,
+  },
+  specialCard: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 4,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.1)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  revealedCard: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 4,
+  },
+  cardSymbol: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  cardValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   sectionTitle: {
     marginBottom: 12,
