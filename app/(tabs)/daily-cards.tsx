@@ -1,71 +1,33 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Image, View, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { format } from 'date-fns';
 import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Haptics from 'expo-haptics';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { Card, generateDeck, getPersonalizedMeaning, cardBack } from '@/utils/cardManager';
+import { getMoonPhaseWithSign } from '@/utils/moonPhase';
+import { updateStreak } from '@/utils/streakTracker';
 
-// Define card type
-type Card = {
-  id: string;
-  name: string;
-  meaning: string;
-  image: any; // Using any for image require
-};
-
+// Import types
 const { width, height } = Dimensions.get('window');
 
-// Card data
-const CARDS: Card[] = [
-  { id: '1', name: 'Ace of Hearts', meaning: 'New beginnings, love, happiness', image: require('@/assets/images/partial-react-logo.png') },
-  { id: '2', name: '2 of Hearts', meaning: 'Partnership, mutual attraction', image: require('@/assets/images/partial-react-logo.png') },
-  { id: '3', name: '3 of Hearts', meaning: 'Creativity, growth, expansion', image: require('@/assets/images/partial-react-logo.png') },
-  { id: '4', name: '4 of Hearts', meaning: 'Stability, foundation, security', image: require('@/assets/images/partial-react-logo.png') },
-  { id: '5', name: '5 of Hearts', meaning: 'Change, instability, conflict', image: require('@/assets/images/partial-react-logo.png') },
-  { id: '6', name: '6 of Hearts', meaning: 'Harmony, healing, cooperation', image: require('@/assets/images/partial-react-logo.png') },
-  { id: '7', name: '7 of Hearts', meaning: 'Reflection, assessment, insight', image: require('@/assets/images/partial-react-logo.png') },
-  { id: '8', name: '8 of Hearts', meaning: 'Movement, progress, journey', image: require('@/assets/images/partial-react-logo.png') },
-  { id: '9', name: '9 of Hearts', meaning: 'Wishes fulfilled, contentment', image: require('@/assets/images/partial-react-logo.png') },
-  { id: '10', name: '10 of Hearts', meaning: 'Completion, wholeness, perfection', image: require('@/assets/images/partial-react-logo.png') },
-  { id: '11', name: 'Jack of Hearts', meaning: 'Youth, enthusiasm, messenger', image: require('@/assets/images/partial-react-logo.png') },
-  { id: '12', name: 'Queen of Hearts', meaning: 'Nurturing, intuition, compassion', image: require('@/assets/images/partial-react-logo.png') },
-  { id: '13', name: 'King of Hearts', meaning: 'Mastery, leadership, wisdom', image: require('@/assets/images/partial-react-logo.png') },
-  // Add more cards as needed
-];
+// Animation timing constants
+const CARD_FLIP_DURATION = 600; // ms
+const CARD_DEAL_DELAY = 200; // ms between cards
 
-// Generate a personalized interpretation
-const getPersonalInterpretation = (cardMeaning: string): string => {
-  const prefixes = [
-    'Today, this card suggests that you',
-    'For you today, this means',
-    "This card's energy invites you to",
-    'Consider how you might',
-    'Reflect on ways you can'
-  ];
-  
-  const suffix = cardMeaning.toLowerCase()
-    .replace('happiness', 'find joy in small moments')
-    .replace('love', 'open your heart to new connections')
-    .replace('security', 'build stronger foundations')
-    .replace('conflict', 'navigate challenges with grace')
-    .replace('insight', 'trust your inner wisdom');
-    
-  const randomPrefix = prefixes[Math.floor(Math.random() * prefixes.length)];
-  return `${randomPrefix} ${suffix}.`;
-};
 
-// Function to get today's date in a consistent format
 const getTodayDateString = () => {
   return format(new Date(), 'yyyy-MM-dd');
 };
 
 // Function to draw random cards
 const drawRandomCards = (count: number): Card[] => {
-  const shuffled = [...CARDS].sort(() => 0.5 - Math.random());
+  const shuffled = [...generateDeck()].sort(() => 0.5 - Math.random());
   return shuffled.slice(0, count);
 };
 
@@ -73,68 +35,78 @@ export default function DailyCardsScreen() {
   const [dailyCards, setDailyCards] = useState<Card[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [greeting, setGreeting] = useState('Good Morning');
-  const [moonPhase, setMoonPhase] = useState('Moon in Gemini');
+  const [moonPhase, setMoonPhase] = useState('');
   const [currentDate, setCurrentDate] = useState(format(new Date(), 'MMMM d'));
+  const [streak, setStreak] = useState({ currentStreak: 0, highestStreak: 0 });
+  const [isFlipped, setIsFlipped] = useState(false);
   const colorScheme = useColorScheme();
   
   useEffect(() => {
-    // Set appropriate greeting based on time of day
-    const setTimeBasedGreeting = () => {
-      const hour = new Date().getHours();
-      if (hour < 12) {
-        setGreeting('Good Morning');
-      } else if (hour < 18) {
-        setGreeting('Good Afternoon');
-      } else {
-        setGreeting('Good Evening');
-      }
-    };
-    
-    const loadDailyCards = async () => {
+    const initializeData = async () => {
       try {
-        setIsLoading(true);
+        // Update streak
+        const streakData = await updateStreak();
+        setStreak(streakData);
+        
+        // Set moon phase
+        setMoonPhase(getMoonPhaseWithSign());
+        
+        // Set greeting based on time of day
+        const hour = new Date().getHours();
+        if (hour < 12) setGreeting('Good Morning');
+        else if (hour < 18) setGreeting('Good Afternoon');
+        else setGreeting('Good Evening');
+        
+        // Load or generate daily cards
         const today = getTodayDateString();
         const storedData = await AsyncStorage.getItem('dailyCards');
         
         if (storedData) {
           const { date, cards } = JSON.parse(storedData);
-          
-          // If we have cards for today, use them
           if (date === today) {
             setDailyCards(cards);
           } else {
-            // Otherwise draw new cards for today
-            const newCards = drawRandomCards(3);
-            await AsyncStorage.setItem('dailyCards', JSON.stringify({
-              date: today,
-              cards: newCards
-            }));
-            setDailyCards(newCards);
+            await generateNewCards();
           }
         } else {
-          // First time using the app, draw cards
-          const newCards = drawRandomCards(3);
-          await AsyncStorage.setItem('dailyCards', JSON.stringify({
-            date: today,
-            cards: newCards
-          }));
-          setDailyCards(newCards);
+          await generateNewCards();
         }
+        
+        setIsLoading(false);
       } catch (error) {
-        console.error('Error loading daily cards:', error);
-        // Fallback to random cards if there's an error
-        setDailyCards(drawRandomCards(3));
-      } finally {
+        console.error('Error initializing data:', error);
         setIsLoading(false);
       }
     };
-    
-    setTimeBasedGreeting();
-    setCurrentDate(format(new Date(), 'MMMM d'));
-    loadDailyCards();
+
+    initializeData();
   }, []);
-  
-  // Render the main screen UI components
+
+  const generateNewCards = async () => {
+    try {
+      const deck = generateDeck();
+      const shuffled = [...deck].sort(() => 0.5 - Math.random());
+      const newCards = shuffled.slice(0, 3);
+      
+      await AsyncStorage.setItem('dailyCards', JSON.stringify({
+        date: getTodayDateString(),
+        cards: newCards
+      }));
+      
+      setDailyCards(newCards);
+      
+      // Trigger haptic feedback for new cards
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.error('Error generating new cards:', error);
+    }
+  };
+
+  const handleCardPress = (card: Card) => {
+    setIsFlipped(!isFlipped);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  };
+
   return (
     <ScrollView style={styles.container} bounces={false}>
       <LinearGradient
@@ -154,7 +126,7 @@ export default function DailyCardsScreen() {
           
           <View style={styles.streakContainer}>
             <IconSymbol name="flame.fill" size={20} color="#fff" />
-            <ThemedText style={styles.streakText}>2</ThemedText>
+            <ThemedText style={styles.streakText}>{streak.currentStreak}</ThemedText>
           </View>
         </View>
         
@@ -167,15 +139,40 @@ export default function DailyCardsScreen() {
         {/* Card display section */}
         <View style={styles.cardSection}>
           {isLoading ? (
-            <ThemedText style={styles.loadingText}>Drawing your cards...</ThemedText>
-          ) : (
-            <View style={styles.cardStackContainer}>
-              <Image 
-                source={require('@/assets/images/partial-react-logo.png')} 
-                style={styles.cardStackImage} 
-                resizeMode="contain"
-              />
+            <View style={styles.loadingContainer}>
+              <ThemedText style={styles.loadingText}>Drawing your cards...</ThemedText>
             </View>
+          ) : (
+            <ScrollView
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              style={styles.cardCarousel}
+            >
+              {dailyCards.map((card, index) => (
+                <TouchableOpacity
+                  key={card.id}
+                  style={styles.cardContainer}
+                  onPress={() => handleCardPress(card)}
+                  activeOpacity={0.9}
+                >
+                  <Image
+                    source={isFlipped ? card.image : cardBack}
+                    style={styles.cardImage}
+                    resizeMode="contain"
+                  />
+                  {isFlipped && (
+                    <View style={styles.cardDetails}>
+                      <ThemedText style={styles.cardName}>{card.name}</ThemedText>
+                      <ThemedText style={styles.cardMeaning}>{card.meaning}</ThemedText>
+                      <ThemedText style={styles.personalMeaning}>
+                        {getPersonalizedMeaning(card)}
+                      </ThemedText>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           )}
         </View>
         
@@ -235,7 +232,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 2,
-    backdropFilter: 'blur(10px)',
   },
   moonIcon: {
     marginRight: 5,
@@ -256,7 +252,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 2,
-    backdropFilter: 'blur(10px)',
   },
   streakText: {
     color: '#fff',
@@ -291,29 +286,63 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 20,
   },
+  loadingContainer: {
+    padding: 20,
+    alignItems: 'center',
+  },
   loadingText: {
     color: '#fff',
     fontSize: 16,
   },
-  cardStackContainer: {
-    width: 240,
-    height: 360,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginVertical: 20,
+  cardCarousel: {
+    height: 480,
+    width: width,
   },
-  cardStackImage: {
-    width: '100%',
-    height: '100%',
+  cardContainer: {
+    width: width - 40,
+    height: 480,
+    marginHorizontal: 20,
     borderRadius: 24,
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.2,
     shadowRadius: 16,
     elevation: 10,
-    backgroundColor: '#fff',
+  },
+  cardImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  cardDetails: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+  },
+  cardName: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  cardMeaning: {
+    color: '#fff',
+    fontSize: 16,
+    marginBottom: 12,
+  },
+  personalMeaning: {
+    color: '#fff',
+    fontSize: 14,
+    fontStyle: 'italic',
+    opacity: 0.9,
   },
   dateSection: {
     alignItems: 'center',
@@ -331,7 +360,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 2,
-    backdropFilter: 'blur(10px)',
   },
   dateText: {
     fontSize: 16,
@@ -370,7 +398,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 3,
-    backdropFilter: 'blur(8px)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
   },
@@ -379,70 +406,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '400',
     letterSpacing: 0.3,
-  },
-  // Keeping these styles for backward compatibility
-  headerContent: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 60,
-    paddingBottom: 20,
-  },
-  cardsContainer: {
-    gap: 20,
-    marginBottom: 20,
-  },
-  cardContainer: {
-    borderRadius: 24,
-    overflow: 'hidden',
-    marginBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    elevation: 5,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  cardImageContainer: {
-    height: 220,
-    position: 'relative',
-  },
-  cardImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
-  },
-  cardOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 20,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    backdropFilter: 'blur(4px)',
-  },
-  cardContent: {
-    padding: 24,
-    gap: 12,
-  },
-  meaningText: {
-    marginBottom: 12,
-  },
-  forYouTitle: {
-    marginTop: 8,
-  },
-  interpretationText: {
-    fontStyle: 'italic',
-  },
-  loadingContainer: {
-    padding: 20,
-    alignItems: 'center',
-  },
-  infoContainer: {
-    padding: 16,
-    marginTop: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
   },
 });

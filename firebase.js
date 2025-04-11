@@ -1,11 +1,18 @@
-// Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+import { getAnalytics, isSupported } from "firebase/analytics";
+import {
+  getAuth,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendEmailVerification,
+  updateProfile,
+  signOut,
+  browserLocalPersistence,
+  indexedDBLocalPersistence
+} from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
   apiKey: "AIzaSyCW9L0nAeyme1JG132hZU5Z0kXh4RxPj74",
   authDomain: "cartomancy-app.firebaseapp.com",
@@ -18,4 +25,32 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+
+// Initialize Auth with web persistence
+const auth = getAuth(app);
+
+// Initialize other Firebase services
+let analytics = null;
+isSupported().then(supported => {
+  if (supported) {
+    analytics = getAnalytics(app);
+  }
+}).catch(err => {
+  console.warn('Firebase Analytics not supported:', err);
+});
+const db = getFirestore(app);
+
+// Export Firebase instances and auth methods
+export {
+  app,
+  auth,
+  db,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendEmailVerification,
+  updateProfile,
+  signOut
+};
+
+// Export analytics conditionally
+export { analytics };
